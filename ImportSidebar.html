@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 13px; padding: 12px; }
+    h2 { font-size: 15px; margin-bottom: 4px; color: #1a73e8; }
+    .subtitle { color: #666; font-size: 11px; margin-bottom: 14px; }
+    textarea { width: 100%; height: 200px; font-size: 11px; font-family: monospace; border: 1px solid #ccc; border-radius: 4px; padding: 6px; box-sizing: border-box; }
+    .btn { background: #1a73e8; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; font-size: 13px; margin-top: 8px; width: 100%; }
+    .btn:hover { background: #1557b0; }
+    .result { margin-top: 10px; padding: 8px; border-radius: 4px; font-size: 12px; display: none; }
+    .success { background: #e6f4ea; border: 1px solid #34a853; color: #1e7e34; }
+    .error   { background: #fce8e6; border: 1px solid #ea4335; color: #c5221f; }
+    .mapping { background: #f8f9fa; border: 1px solid #ddd; border-radius: 4px; padding: 10px; margin-top: 14px; font-size: 11px; }
+    .mapping h3 { margin: 0 0 6px; font-size: 12px; color: #333; }
+    .mapping table { width: 100%; border-collapse: collapse; }
+    .mapping td { padding: 2px 4px; }
+    .mapping td:first-child { color: #666; }
+    .mapping td:last-child { font-weight: bold; font-family: monospace; }
+    .spinner { display: none; text-align: center; margin-top: 8px; color: #666; }
+  </style>
+</head>
+<body>
+
+<h2>Import from Salesforce</h2>
+<p class="subtitle">Paste CSV data from your Salesforce DSR report below.</p>
+
+<textarea id="csvInput" placeholder="Paste CSV here (include the header row)..."></textarea>
+
+<button class="btn" onclick="doImport()">Import DSRs</button>
+
+<div class="spinner" id="spinner">⏳ Importing…</div>
+<div class="result" id="result"></div>
+
+<div class="mapping">
+  <h3>Expected Salesforce column names</h3>
+  <table>
+    <tr><td>Opportunity ID</td><td>→ Deal ID</td></tr>
+    <tr><td>Opportunity Name</td><td>→ Opp Name</td></tr>
+    <tr><td>Owner</td><td>→ DM Name</td></tr>
+    <tr><td>Region</td><td>→ Region</td></tr>
+    <tr><td>Opportunity Type</td><td>→ Opp Type</td></tr>
+    <tr><td>Incentive Rate</td><td>→ Incentive</td></tr>
+    <tr><td>Merchant Type</td><td>→ Merchant Type</td></tr>
+    <tr><td>Model Type</td><td>→ Model Type</td></tr>
+    <tr><td>Cross Region</td><td>→ Cross-Region?</td></tr>
+    <tr><td>Payout</td><td>→ Payout Add-on?</td></tr>
+    <tr><td>Breakglass</td><td>→ Breakglass Add-on?</td></tr>
+    <tr><td>NDA</td><td>→ NDA Add-on?</td></tr>
+    <tr><td>VAS</td><td>→ VAS Add-on?</td></tr>
+    <tr><td>Stage</td><td>→ Status</td></tr>
+    <tr><td>MAF Sent Date</td><td>→ Start date ★</td></tr>
+    <tr><td>MAF Submitted Date</td><td>→ Submitted date</td></tr>
+    <tr><td>MAF Approved Date</td><td>→ Approved date</td></tr>
+    <tr><td>MID Issue Date</td><td>→ Close date ★</td></tr>
+  </table>
+  <p style="margin: 6px 0 0; color: #666; font-size: 10px;">
+    Column matching is flexible — partial matches work.<br>
+    Duplicate Deal IDs are automatically skipped.
+  </p>
+</div>
+
+<script>
+  function doImport() {
+    var csv = document.getElementById('csvInput').value.trim();
+    if (!csv) {
+      showResult('error', 'Please paste CSV data first.');
+      return;
+    }
+    document.getElementById('spinner').style.display = 'block';
+    document.getElementById('result').style.display = 'none';
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        document.getElementById('spinner').style.display = 'none';
+        if (res.error) {
+          showResult('error', '❌ ' + res.error);
+        } else {
+          showResult('success',
+            '✅ Import complete!\n' +
+            res.imported + ' DSR(s) imported.\n' +
+            (res.skipped > 0 ? res.skipped + ' duplicate(s) skipped.' : '')
+          );
+          document.getElementById('csvInput').value = '';
+        }
+      })
+      .withFailureHandler(function(err) {
+        document.getElementById('spinner').style.display = 'none';
+        showResult('error', '❌ Error: ' + err.message);
+      })
+      .importSalesforceData(csv);
+  }
+
+  function showResult(type, msg) {
+    var el = document.getElementById('result');
+    el.className = 'result ' + type;
+    el.style.display = 'block';
+    el.style.whiteSpace = 'pre-line';
+    el.textContent = msg;
+  }
+</script>
+</body>
+</html>
