@@ -3,7 +3,13 @@
 // =============================================================================
 // DSR LIFECYCLE MANDATE (team-wide standard):
 //   START  = MAF Send date  (DM sends MAF link to merchant; DM is now engaged)
-//   CLOSE  = MID Issue date (merchant receives MID and goes live; deal complete)
+//   CLOSE  = Work Complete date — when THIS specific piece of DSR work is done.
+//            "Done" depends on what the DSR covers:
+//              Full deal          → typically MID Issue
+//              NDA task           → NDA Signed
+//              Payout task        → Payout Configured
+//              Breakglass task    → Pricing Approved
+//              Other              → whatever milestone ends this work
 //
 // Expected time is calculated from the scoring model in the "Scoring Model"
 // sheet and is based on: Opportunity Type (baseline) + Complexity Add-ons
@@ -13,28 +19,29 @@
 
 // ─── Column indices for "DSR Log" sheet (1-based) ────────────────────────────
 var COL = {
-  DEAL_ID:          1,
-  OPP_NAME:         2,
-  DM_NAME:          3,
-  REGION:           4,
-  OPP_TYPE:         5,   // New Business | Cross-Sell | Upsell/Downsell
-  INCENTIVE:        6,   // Gold | Silver | Bronze
-  MERCHANT_TYPE:    7,   // Complex (Payfac/Marketplace/Digital Wallet) | Merchant
-  MODEL_TYPE:       8,   // Acquiring | Gateway Only
-  IS_CROSS_REGION:  9,   // TRUE/FALSE
-  ADDON_PAYOUT:    10,   // TRUE/FALSE
-  ADDON_BREAKGLASS:11,   // TRUE/FALSE
-  ADDON_NDA:       12,   // TRUE/FALSE
-  ADDON_VAS:       13,   // TRUE/FALSE
-  EXPECTED_HOURS:  14,   // Auto-calculated
-  STATUS:          15,   // Open | MAF Sent | MAF Submitted | MAF Approved | Closed
-  MAF_SENT_DATE:   16,   // DSR START — set when status moves to "MAF Sent"
-  MAF_SUBMIT_DATE: 17,
-  MAF_APPROVE_DATE:18,
-  MID_ISSUE_DATE:  19,   // DSR CLOSE — set when status moves to "Closed"
-  CYCLE_DAYS:      20,   // MID_ISSUE_DATE - MAF_SENT_DATE
-  EARNED_POINTS:   21,   // Points earned so far based on milestone weights
-  NOTES:           22,
+  DEAL_ID:             1,
+  OPP_NAME:            2,
+  DM_NAME:             3,
+  REGION:              4,
+  OPP_TYPE:            5,   // New Business | Cross-Sell | Upsell/Downsell
+  INCENTIVE:           6,   // Gold | Silver | Bronze
+  MERCHANT_TYPE:       7,   // Complex (Payfac/Marketplace/Digital Wallet) | Merchant
+  MODEL_TYPE:          8,   // Acquiring | Gateway Only
+  IS_CROSS_REGION:     9,   // TRUE/FALSE
+  ADDON_PAYOUT:       10,   // TRUE/FALSE
+  ADDON_BREAKGLASS:   11,   // TRUE/FALSE
+  ADDON_NDA:          12,   // TRUE/FALSE
+  ADDON_VAS:          13,   // TRUE/FALSE
+  EXPECTED_HOURS:     14,   // Auto-calculated
+  STATUS:             15,   // Open | MAF Sent | MAF Submitted | MAF Approved | Closed
+  MAF_SENT_DATE:      16,   // DSR START — set when status moves to "MAF Sent"
+  MAF_SUBMIT_DATE:    17,
+  MAF_APPROVE_DATE:   18,
+  WORK_COMPLETE_DATE: 19,   // DSR CLOSE — when this specific piece of work is done
+  CLOSE_REASON:       20,   // What completed this DSR (NDA Signed, MID Issued, etc.)
+  CYCLE_DAYS:         21,   // WORK_COMPLETE_DATE - MAF_SENT_DATE
+  EARNED_POINTS:      22,   // Points earned so far based on milestone weights
+  NOTES:              23,
 };
 
 var DSR_LOG_SHEET   = "DSR Log";
@@ -83,7 +90,7 @@ function onOpen() {
     .addItem("▶ Start DSR (MAF Sent)", "startSelectedDSRs")
     .addItem("⏩ Advance to MAF Submitted", "advanceToMAFSubmitted")
     .addItem("✅ Advance to MAF Approved", "advanceToMAFApproved")
-    .addItem("🏁 Close DSR (MID Issued)", "closeSelectedDSRs")
+    .addItem("🏁 Close DSR (Work Complete)", "closeSelectedDSRs")
     .addSeparator()
     .addItem("🔄 Recalculate Expected Hours", "recalculateAllExpectedHours")
     .addItem("📊 Refresh Earned Points", "refreshAllEarnedPoints")
@@ -107,7 +114,8 @@ function setupSheets() {
       "Opp Type", "Incentive", "Merchant Type", "Model Type",
       "Cross-Region?", "Payout Add-on?", "Breakglass Add-on?", "NDA Add-on?", "VAS Add-on?",
       "Expected Hours", "Status",
-      "MAF Sent Date ★ START", "MAF Submitted Date", "MAF Approved Date", "MID Issue Date ★ CLOSE",
+      "MAF Sent Date ★ START", "MAF Submitted Date", "MAF Approved Date",
+      "Work Complete Date ★ CLOSE", "Completion Event",
       "Cycle Days", "Earned Points", "Notes"
     ];
     logSheet.appendRow(headers);
@@ -119,7 +127,8 @@ function setupSheets() {
 
     // Highlight the START and CLOSE columns
     logSheet.getRange(1, COL.MAF_SENT_DATE).setBackground("#0d652d").setFontColor("white");
-    logSheet.getRange(1, COL.MID_ISSUE_DATE).setBackground("#b31412").setFontColor("white");
+    logSheet.getRange(1, COL.WORK_COMPLETE_DATE).setBackground("#b31412").setFontColor("white");
+    logSheet.getRange(1, COL.CLOSE_REASON).setBackground("#b31412").setFontColor("white");
 
     // Data validation for key columns
     _applyValidation(logSheet, COL.OPP_TYPE, Object.keys(BASELINE));
@@ -132,6 +141,15 @@ function setupSheets() {
     _applyValidation(logSheet, COL.ADDON_NDA, ["TRUE", "FALSE"]);
     _applyValidation(logSheet, COL.ADDON_VAS, ["TRUE", "FALSE"]);
     _applyValidation(logSheet, COL.STATUS, STATUS_ORDER);
+    _applyValidation(logSheet, COL.CLOSE_REASON, [
+      "NDA Signed",
+      "Payout Configured",
+      "Pricing Approved",
+      "MAF Approved",
+      "Contract Signed",
+      "MID Issued",
+      "Other"
+    ]);
   }
 
   // ── Scoring Model sheet ───────────────────────────────────────────────────
@@ -141,7 +159,8 @@ function setupSheets() {
     "✅ Sheets are ready.\n\n" +
     "DSR LIFECYCLE MANDATE:\n" +
     "  START = MAF Sent date\n" +
-    "  CLOSE = MID Issue date\n\n" +
+    "  CLOSE = Work Complete date\n" +
+    "          (when THIS specific piece of work is done)\n\n" +
     "Use the \"DSR Management\" menu to manage DSRs."
   );
 }
@@ -174,10 +193,10 @@ function _buildScoringModelSheet(ss) {
     ["Standalone VAS Onboarding", 3.0, "Standalone Value-Added Service configuration & setup"],
     ["", "", ""],
     ["MILESTONE WEIGHTS (Earned Points)", "Weight", ""],
-    ["MAF Send", "20%", "Pre-coordination complete; DM engagement begins → DSR STARTS"],
+    ["MAF Send", "20%", "Pre-coordination complete; DM engagement begins → DSR STARTS here"],
     ["MAF Submit", "10%", "System submission action"],
     ["MAF Approve", "40%", "Core approval work; most DM effort concentrated here"],
-    ["MID Issue / Contract Signed", "30%", "Deal live; revenue realized → DSR CLOSES"],
+    ["MID Issue / Contract Signed", "30%", "One possible close event for full-deal DSRs"],
   ];
 
   sheet.getRange(1, 1, rows.length, 3).setValues(rows);
@@ -216,7 +235,7 @@ function _getSelectedRows(sheet) {
   return rows;
 }
 
-function _advanceStatus(targetStatus, dateCol) {
+function _advanceStatus(targetStatus, dateCol, closeReason) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var sheet = ss.getSheetByName(DSR_LOG_SHEET);
   if (!sheet) { SpreadsheetApp.getUi().alert("Run Setup Sheets first."); return; }
@@ -239,9 +258,12 @@ function _advanceStatus(targetStatus, dateCol) {
 
     sheet.getRange(row, COL.STATUS).setValue(targetStatus);
     if (dateCol) sheet.getRange(row, dateCol).setValue(now);
+    // closeReason is only passed for the Close action
 
-    // If closing, compute cycle days
+
+    // If closing, record completion event and compute cycle days
     if (targetStatus === "Closed") {
+      if (closeReason) sheet.getRange(row, COL.CLOSE_REASON).setValue(closeReason);
       var startDate = sheet.getRange(row, COL.MAF_SENT_DATE).getValue();
       if (startDate instanceof Date) {
         var cycleDays = Math.round((now - startDate) / (1000 * 60 * 60 * 24) * 10) / 10;
@@ -276,11 +298,40 @@ function advanceToMAFApproved() {
 }
 
 /**
- * CLOSE: sets status to "Closed" and records the MID issue date.
- * This is the official DSR close — merchant is live; deal is revenue-realized.
+ * CLOSE: sets status to "Closed" and records Work Complete date + completion event.
+ * "Done" means this specific piece of DSR work is finished — not necessarily MID Issue.
  */
 function closeSelectedDSRs() {
-  _advanceStatus("Closed", COL.MID_ISSUE_DATE);
+  var ui = SpreadsheetApp.getUi();
+  var response = ui.prompt(
+    "Close DSR — Completion Event",
+    "What completed this work?\n\n" +
+    "  1  NDA Signed\n" +
+    "  2  Payout Configured\n" +
+    "  3  Pricing Approved\n" +
+    "  4  MAF Approved\n" +
+    "  5  Contract Signed\n" +
+    "  6  MID Issued\n" +
+    "  7  Other\n\n" +
+    "Enter the number (or type a custom reason):",
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+
+  var closeReasonMap = {
+    "1": "NDA Signed",
+    "2": "Payout Configured",
+    "3": "Pricing Approved",
+    "4": "MAF Approved",
+    "5": "Contract Signed",
+    "6": "MID Issued",
+    "7": "Other"
+  };
+  var input = (response.getResponseText() || "").trim();
+  var closeReason = closeReasonMap[input] || (input || "Other");
+
+  _advanceStatus("Closed", COL.WORK_COMPLETE_DATE, closeReason);
 }
 
 // =============================================================================
@@ -356,7 +407,7 @@ function _updateEarnedPoints(sheet, row) {
   if (idx >= 1) weight += MILESTONE_WEIGHTS.mafSent;      // MAF Sent
   if (idx >= 2) weight += MILESTONE_WEIGHTS.mafSubmit;    // MAF Submitted
   if (idx >= 3) weight += MILESTONE_WEIGHTS.mafApprove;   // MAF Approved
-  if (idx >= 4) weight += MILESTONE_WEIGHTS.midIssue;     // Closed
+  if (idx >= 4) weight += MILESTONE_WEIGHTS.midIssue;     // Closed (work complete)
 
   var earned = Math.round(expected * weight * 10) / 10;
   sheet.getRange(row, COL.EARNED_POINTS).setValue(earned);
@@ -383,7 +434,8 @@ function refreshAllEarnedPoints() {
  * Expected CSV columns (from Salesforce report):
  *   Opportunity ID, Opportunity Name, Owner (DM), Region, Opportunity Type,
  *   Incentive Rate, Merchant Type, Model Type, Cross Region, Payout, Breakglass,
- *   NDA, VAS, Stage, MAF Sent Date, MAF Submitted Date, MAF Approved Date, MID Issue Date
+ *   NDA, VAS, Stage, MAF Sent Date, MAF Submitted Date, MAF Approved Date,
+ *   Work Complete Date (or MID Issue Date), Completion Event
  */
 function showImportSidebar() {
   var html = HtmlService.createHtmlOutputFromFile("ImportSidebar")
@@ -438,16 +490,17 @@ function importSalesforceData(csvText) {
     var stage      = SF.stage >= 0 ? cells[SF.stage] : "Open";
     var status     = _normStatus(stage);
 
-    var mafSentDate    = _parseDate(SF.mafSentDate >= 0 ? cells[SF.mafSentDate] : "");
-    var mafSubmitDate  = _parseDate(SF.mafSubmitDate >= 0 ? cells[SF.mafSubmitDate] : "");
-    var mafApproveDate = _parseDate(SF.mafApproveDate >= 0 ? cells[SF.mafApproveDate] : "");
-    var midIssueDate   = _parseDate(SF.midIssueDate >= 0 ? cells[SF.midIssueDate] : "");
+    var mafSentDate       = _parseDate(SF.mafSentDate >= 0 ? cells[SF.mafSentDate] : "");
+    var mafSubmitDate     = _parseDate(SF.mafSubmitDate >= 0 ? cells[SF.mafSubmitDate] : "");
+    var mafApproveDate    = _parseDate(SF.mafApproveDate >= 0 ? cells[SF.mafApproveDate] : "");
+    var workCompleteDate  = _parseDate(SF.workCompleteDate >= 0 ? cells[SF.workCompleteDate] : "");
+    var importCloseReason = SF.closeReason >= 0 ? cells[SF.closeReason] : "";
 
     var expected = calculateExpectedHours(oppType, incentive, merchantTy, modelType, crossReg, payout, breakglass, nda, vas);
 
     var cycleDays = "";
-    if (mafSentDate && midIssueDate) {
-      cycleDays = Math.round((midIssueDate - mafSentDate) / (1000 * 60 * 60 * 24) * 10) / 10;
+    if (mafSentDate && workCompleteDate) {
+      cycleDays = Math.round((workCompleteDate - mafSentDate) / (1000 * 60 * 60 * 24) * 10) / 10;
     }
 
     var row = [
@@ -458,7 +511,8 @@ function importSalesforceData(csvText) {
       oppType, incentive, merchantTy, modelType,
       crossReg, payout, breakglass, nda, vas,
       expected, status,
-      mafSentDate || "", mafSubmitDate || "", mafApproveDate || "", midIssueDate || "",
+      mafSentDate || "", mafSubmitDate || "", mafApproveDate || "",
+      workCompleteDate || "", importCloseReason,
       cycleDays, "", ""
     ];
 
@@ -524,10 +578,11 @@ function _mapSalesforceHeaders(header) {
   m.nda          = find(["nda"]);
   m.vas          = find(["vas", "standalone vas"]);
   m.stage        = find(["stage", "status"]);
-  m.mafSentDate    = find(["maf sent", "maf_sent"]);
-  m.mafSubmitDate  = find(["maf submit", "maf_submit"]);
-  m.mafApproveDate = find(["maf approv", "maf_approv"]);
-  m.midIssueDate   = find(["mid issue", "mid_issue", "live date", "closed date"]);
+  m.mafSentDate      = find(["maf sent", "maf_sent"]);
+  m.mafSubmitDate    = find(["maf submit", "maf_submit"]);
+  m.mafApproveDate   = find(["maf approv", "maf_approv"]);
+  m.workCompleteDate = find(["work complete", "mid issue", "mid_issue", "live date", "closed date", "completion date"]);
+  m.closeReason      = find(["completion event", "close reason", "close_reason", "completion_event"]);
   return m;
 }
 
@@ -586,7 +641,7 @@ function showLifecycleRules() {
     "📋 DSR LIFECYCLE MANDATE\n" +
     "══════════════════════════════════\n\n" +
     "▶ START  —  MAF Sent\n" +
-    "  The DM sends the MAF (Merchant Application Form) link to the merchant.\n" +
+    "  The DM sends the MAF link to the merchant.\n" +
     "  This is the official moment DM engagement begins.\n" +
     "  Cycle time starts here.\n\n" +
     "⏩ MILESTONE  —  MAF Submitted\n" +
@@ -595,12 +650,17 @@ function showLifecycleRules() {
     "⏩ MILESTONE  —  MAF Approved\n" +
     "  Underwriting / Risk approves the MAF.\n" +
     "  Earns 70% of expected points (adds Approve 40%).\n\n" +
-    "🏁 CLOSE  —  MID Issue (Contract Signed)\n" +
-    "  Merchant receives their MID and goes live.\n" +
-    "  Revenue is realized. Cycle time ends here.\n" +
+    "🏁 CLOSE  —  Work Complete\n" +
+    "  This specific piece of DSR work is done.\n" +
+    "  \"Done\" depends on what the DSR covers:\n" +
+    "    Full deal      → MID Issued\n" +
+    "    NDA task       → NDA Signed\n" +
+    "    Payout task    → Payout Configured\n" +
+    "    Breakglass     → Pricing Approved\n" +
+    "    Other          → whatever ends this work\n" +
     "  Earns 100% of expected points.\n\n" +
     "══════════════════════════════════\n" +
-    "Cycle Days = MID Issue Date − MAF Sent Date";
+    "Cycle Days = Work Complete Date − MAF Sent Date";
 
   SpreadsheetApp.getUi().alert(msg);
 }

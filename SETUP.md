@@ -18,7 +18,19 @@ A Google Sheets add-on (Apps Script) that gives the whole DM team:
 | **▶ START** | MAF Sent | DM sends the MAF link to merchant. Engagement begins. Cycle time starts. |
 | ⏩ Milestone | MAF Submitted | Merchant completes the form. Earns 30% of expected points. |
 | ⏩ Milestone | MAF Approved | UW/Risk approves. Earns 70% of expected points. |
-| **🏁 CLOSE** | MID Issue | Merchant goes live. Revenue realized. Cycle time ends. Earns 100% of points. |
+| **🏁 CLOSE** | Work Complete | **This specific piece of DSR work is done.** "Done" depends on what the DSR covers — see table below. Earns 100% of expected points. |
+
+### Completion events by work type
+
+| DSR covers | Work is done when… |
+|---|---|
+| Full deal | MID Issued |
+| NDA task | NDA Signed |
+| Payout onboarding | Payout Configured |
+| Breakglass pricing | Pricing Approved |
+| Other task | whatever milestone ends that work |
+
+When you click **Close DSR**, the script prompts you to select the completion event so it's captured alongside the close date.
 
 ---
 
@@ -124,6 +136,7 @@ Duplicate Deal IDs are automatically skipped on re-import.
 | Expected Hours | Auto-calculated from scoring model |
 | Status | Current lifecycle stage |
 | MAF Sent Date ★ | **DSR START** — populated by "Start DSR" action |
-| MID Issue Date ★ | **DSR CLOSE** — populated by "Close DSR" action |
-| Cycle Days | MID Issue − MAF Sent (auto-calculated on close) |
+| Work Complete Date ★ | **DSR CLOSE** — when this specific piece of work finished |
+| Completion Event | What completed this DSR (NDA Signed, MID Issued, Pricing Approved, etc.) |
+| Cycle Days | Work Complete Date − MAF Sent Date (auto-calculated on close) |
 | Earned Points | Points accumulated based on milestones reached |
