@@ -33,7 +33,7 @@ var COL = {
   ADDON_NDA:          12,   // TRUE/FALSE
   ADDON_VAS:          13,   // TRUE/FALSE
   EXPECTED_HOURS:     14,   // Auto-calculated
-  STATUS:             15,   // Open | MAF Sent | MAF Submitted | MAF Approved | Closed
+  STATUS:             15,   // Open | MAF Sent | MAF Submitted | MAF Approved | Closed | Lost
   MAF_SENT_DATE:      16,   // DSR START — set when status moves to "MAF Sent"
   MAF_SUBMIT_DATE:    17,
   MAF_APPROVE_DATE:   18,
@@ -42,6 +42,9 @@ var COL = {
   CYCLE_DAYS:         21,   // WORK_COMPLETE_DATE - MAF_SENT_DATE
   EARNED_POINTS:      22,   // Points earned so far based on milestone weights
   NOTES:              23,
+  LOST_DATE:          24,   // Date deal was marked lost
+  LOST_REASON:        25,   // Primary lost reason category
+  LOST_SUBREASON:     26,   // Sub-reason within category
 };
 
 var DSR_LOG_SHEET   = "DSR Log";
@@ -77,7 +80,45 @@ var MILESTONE_WEIGHTS = {
 };
 
 // ─── Lifecycle status order ───────────────────────────────────────────────────
-var STATUS_ORDER = ["Open", "MAF Sent", "MAF Submitted", "MAF Approved", "Closed"];
+var STATUS_ORDER = ["Open", "MAF Sent", "MAF Submitted", "MAF Approved", "Closed", "Lost"];
+
+// ─── Lost reason taxonomy ─────────────────────────────────────────────────────
+var LOST_REASONS = {
+  "Product Fit": [
+    "Acquiring",
+    "Payment Performance / FSM",
+    "VAS",
+    "Emerging Products",
+    "Consumer",
+    "Financial Infrastructure",
+    "FEX"
+  ],
+  "Pricing / Commercial": [
+    "Rate Too High",
+    "MAC Not Met",
+    "Commercial Structure"
+  ],
+  "Lost to Competitor": [
+    "Stripe",
+    "Adyen",
+    "Braintree / PayPal",
+    "Worldpay",
+    "Other Competitor"
+  ],
+  "Not Progressing": [
+    "Timing / Delayed Project",
+    "Merchant Unresponsive",
+    "Not Interested",
+    "Change in Business Priorities"
+  ],
+  "Internal / CKO": [
+    "Credit Risk / Application Declined",
+    "Operations Issues",
+    "SMB",
+    "Sales Process / Redo BDR",
+    "Duplicate Opportunity"
+  ]
+};
 
 // =============================================================================
 // MENU
@@ -91,6 +132,7 @@ function onOpen() {
     .addItem("⏩ Advance to MAF Submitted", "advanceToMAFSubmitted")
     .addItem("✅ Advance to MAF Approved", "advanceToMAFApproved")
     .addItem("🏁 Close DSR (Work Complete)", "closeSelectedDSRs")
+    .addItem("❌ Mark as Lost", "showLostReasonSidebar")
     .addSeparator()
     .addItem("🔄 Recalculate Expected Hours", "recalculateAllExpectedHours")
     .addItem("📊 Refresh Earned Points", "refreshAllEarnedPoints")
@@ -116,7 +158,8 @@ function setupSheets() {
       "Expected Hours", "Status",
       "MAF Sent Date ★ START", "MAF Submitted Date", "MAF Approved Date",
       "Work Complete Date ★ CLOSE", "Completion Event",
-      "Cycle Days", "Earned Points", "Notes"
+      "Cycle Days", "Earned Points", "Notes",
+      "Lost Date", "Lost Reason", "Lost Sub-Reason"
     ];
     logSheet.appendRow(headers);
 
@@ -141,6 +184,22 @@ function setupSheets() {
     _applyValidation(logSheet, COL.ADDON_NDA, ["TRUE", "FALSE"]);
     _applyValidation(logSheet, COL.ADDON_VAS, ["TRUE", "FALSE"]);
     _applyValidation(logSheet, COL.STATUS, STATUS_ORDER);
+    _applyValidation(logSheet, COL.LOST_REASON, Object.keys(LOST_REASONS));
+
+    // Build flat list of all sub-reasons for validation (union across all categories)
+    var allSubReasons = [];
+    Object.keys(LOST_REASONS).forEach(function(k) {
+      LOST_REASONS[k].forEach(function(s) {
+        if (allSubReasons.indexOf(s) < 0) allSubReasons.push(s);
+      });
+    });
+    _applyValidation(logSheet, COL.LOST_SUBREASON, allSubReasons);
+
+    // Highlight the Lost columns
+    logSheet.getRange(1, COL.LOST_DATE).setBackground("#7b0000").setFontColor("white");
+    logSheet.getRange(1, COL.LOST_REASON).setBackground("#7b0000").setFontColor("white");
+    logSheet.getRange(1, COL.LOST_SUBREASON).setBackground("#7b0000").setFontColor("white");
+
     _applyValidation(logSheet, COL.CLOSE_REASON, [
       "NDA Signed",
       "Payout Configured",
@@ -631,6 +690,67 @@ function _parseDate(v) {
   if (!v) return null;
   var d = new Date(v);
   return isNaN(d.getTime()) ? null : d;
+}
+
+// =============================================================================
+// LOST REASON
+// =============================================================================
+
+function showLostReasonSidebar() {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(DSR_LOG_SHEET);
+  if (!sheet) { SpreadsheetApp.getUi().alert("Run Setup Sheets first."); return; }
+
+  var rows = _getSelectedRows(sheet);
+  if (rows.length === 0) { SpreadsheetApp.getUi().alert("Select one or more DSR rows first."); return; }
+
+  var html = HtmlService.createHtmlOutputFromFile("LostReasonSidebar")
+    .setTitle("Mark as Lost")
+    .setWidth(360);
+  SpreadsheetApp.getUi().showSidebar(html);
+}
+
+/**
+ * Called from LostReasonSidebar.html — records the lost reason on selected rows.
+ */
+function markSelectedDSRsLost(primaryReason, subReason) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(DSR_LOG_SHEET);
+  if (!sheet) return { error: "Sheet not found." };
+
+  var rows = _getSelectedRows(sheet);
+  if (rows.length === 0) return { error: "No rows selected." };
+
+  var now = new Date();
+  var updated = 0;
+
+  rows.forEach(function(row) {
+    var currentStatus = sheet.getRange(row, COL.STATUS).getValue();
+    if (currentStatus === "Lost") return; // already lost, skip
+
+    sheet.getRange(row, COL.STATUS).setValue("Lost");
+    sheet.getRange(row, COL.LOST_DATE).setValue(now);
+    sheet.getRange(row, COL.LOST_REASON).setValue(primaryReason);
+    sheet.getRange(row, COL.LOST_SUBREASON).setValue(subReason);
+
+    // Record cycle days from MAF Sent to Lost date
+    var startDate = sheet.getRange(row, COL.MAF_SENT_DATE).getValue();
+    if (startDate instanceof Date) {
+      var cycleDays = Math.round((now - startDate) / (1000 * 60 * 60 * 24) * 10) / 10;
+      sheet.getRange(row, COL.CYCLE_DAYS).setValue(cycleDays);
+    }
+
+    updated++;
+  });
+
+  return { updated: updated };
+}
+
+/**
+ * Returns the LOST_REASONS taxonomy to the sidebar for dynamic dropdown population.
+ */
+function getLostReasons() {
+  return LOST_REASONS;
 }
 
 // =============================================================================

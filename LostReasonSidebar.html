@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      font-size: 13px;
+      padding: 16px;
+      color: #202124;
+    }
+    h2 {
+      font-size: 15px;
+      margin: 0 0 16px 0;
+      color: #7b0000;
+    }
+    label {
+      display: block;
+      font-weight: bold;
+      margin-bottom: 4px;
+      margin-top: 12px;
+    }
+    select {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #dadce0;
+      border-radius: 4px;
+      font-size: 13px;
+      background: white;
+    }
+    select:focus {
+      outline: 2px solid #1a73e8;
+      border-color: #1a73e8;
+    }
+    select:disabled {
+      background: #f1f3f4;
+      color: #9aa0a6;
+    }
+    .hint {
+      font-size: 11px;
+      color: #5f6368;
+      margin-top: 4px;
+    }
+    button {
+      margin-top: 20px;
+      width: 100%;
+      padding: 10px;
+      background: #7b0000;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover { background: #5c0000; }
+    button:disabled { background: #9aa0a6; cursor: default; }
+    #status {
+      margin-top: 12px;
+      font-size: 12px;
+      color: #5f6368;
+      min-height: 18px;
+    }
+    #status.error { color: #c62828; }
+    #status.success { color: #2e7d32; }
+  </style>
+</head>
+<body>
+  <h2>❌ Mark as Lost</h2>
+
+  <label for="primaryReason">Primary Reason</label>
+  <select id="primaryReason" onchange="onPrimaryChange()">
+    <option value="">— Select reason —</option>
+  </select>
+
+  <label for="subReason">Sub-Reason</label>
+  <select id="subReason" disabled>
+    <option value="">— Select primary reason first —</option>
+  </select>
+  <div class="hint">Both fields are required.</div>
+
+  <button id="submitBtn" onclick="submit()" disabled>Mark as Lost</button>
+  <div id="status"></div>
+
+  <script>
+    var reasons = {};
+
+    google.script.run
+      .withSuccessHandler(function(data) {
+        reasons = data;
+        var primary = document.getElementById('primaryReason');
+        Object.keys(data).forEach(function(key) {
+          var opt = document.createElement('option');
+          opt.value = key;
+          opt.textContent = key;
+          primary.appendChild(opt);
+        });
+      })
+      .getLostReasons();
+
+    function onPrimaryChange() {
+      var primary = document.getElementById('primaryReason').value;
+      var subSelect = document.getElementById('subReason');
+      var btn = document.getElementById('submitBtn');
+
+      subSelect.innerHTML = '';
+      subSelect.disabled = true;
+      btn.disabled = true;
+
+      if (!primary) {
+        var placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '— Select primary reason first —';
+        subSelect.appendChild(placeholder);
+        return;
+      }
+
+      var subs = reasons[primary] || [];
+      var placeholder = document.createElement('option');
+      placeholder.value = '';
+      placeholder.textContent = '— Select sub-reason —';
+      subSelect.appendChild(placeholder);
+
+      subs.forEach(function(s) {
+        var opt = document.createElement('option');
+        opt.value = s;
+        opt.textContent = s;
+        subSelect.appendChild(opt);
+      });
+
+      subSelect.disabled = false;
+      subSelect.onchange = function() {
+        btn.disabled = !subSelect.value;
+      };
+    }
+
+    function submit() {
+      var primary = document.getElementById('primaryReason').value;
+      var sub = document.getElementById('subReason').value;
+      if (!primary || !sub) return;
+
+      var btn = document.getElementById('submitBtn');
+      var status = document.getElementById('status');
+      btn.disabled = true;
+      status.className = '';
+      status.textContent = 'Saving…';
+
+      google.script.run
+        .withSuccessHandler(function(result) {
+          if (result.error) {
+            status.className = 'error';
+            status.textContent = result.error;
+            btn.disabled = false;
+          } else {
+            status.className = 'success';
+            status.textContent = result.updated + ' DSR(s) marked as Lost.';
+          }
+        })
+        .withFailureHandler(function(err) {
+          status.className = 'error';
+          status.textContent = 'Error: ' + err.message;
+          btn.disabled = false;
+        })
+        .markSelectedDSRsLost(primary, sub);
+    }
+  </script>
+</body>
+</html>
