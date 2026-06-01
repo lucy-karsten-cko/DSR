@@ -2,284 +2,219 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Slide 4 — MAF Step Redesign</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    font-family: 'Segoe UI', Arial, sans-serif;
-    background: #f4f4f4;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: 100vh;
-    padding: 20px;
+    font-family: Arial, sans-serif;
+    background: #ffffff;
+    width: 1280px;
+    height: 720px;
+    overflow: hidden;
   }
   .slide {
-    width: 960px;
+    width: 1280px;
+    height: 720px;
     background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 4px 24px rgba(0,0,0,0.15);
-    padding: 40px 48px 48px;
+    padding: 28px 36px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
   }
-  h1 {
-    font-size: 22px;
-    font-weight: 700;
-    color: #1a1a2e;
-    margin-bottom: 32px;
-    letter-spacing: -0.3px;
+
+  /* ── Header ── */
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    flex-shrink: 0;
   }
+  .step-block { flex-shrink: 0; }
   .step-badge {
     display: inline-block;
     background: #1a1a2e;
     color: #fff;
-    font-size: 11px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
-    padding: 4px 12px;
-    border-radius: 4px;
-    margin-bottom: 8px;
+    padding: 3px 10px;
+    border-radius: 3px;
+    margin-bottom: 2px;
   }
-  .step-number {
-    font-size: 28px;
-    font-weight: 800;
-    color: #1a1a2e;
-    margin-bottom: 4px;
+  .step-title { font-size: 26px; font-weight: 800; color: #1a1a2e; }
+  .title-main { font-size: 22px; font-weight: 700; color: #1a1a2e; flex: 1; }
+  .context-note {
+    font-size: 11px;
+    color: #666;
+    background: #f5f5f5;
+    border-left: 3px solid #ccc;
+    padding: 6px 12px;
+    border-radius: 0 4px 4px 0;
+    flex: 1;
+    line-height: 1.5;
   }
-  .step-title {
-    font-size: 18px;
-    font-weight: 700;
-    color: #1a1a2e;
-  }
+  .context-note strong { color: #444; }
 
-  /* ── TODAY row ─────────────────────────────────────── */
-  .today-row {
+  /* ── Rows ── */
+  .row {
     display: flex;
+    flex: 1;
+    min-height: 0;
     gap: 0;
-    margin-bottom: 12px;
   }
   .row-label {
-    width: 80px;
+    width: 72px;
     flex-shrink: 0;
     display: flex;
-    flex-direction: column;
     align-items: center;
     justify-content: center;
-    background: #e87820;
     color: #fff;
     font-weight: 800;
-    font-size: 13px;
-    letter-spacing: 0.5px;
+    font-size: 12px;
     text-transform: uppercase;
+    letter-spacing: 0.5px;
     border-radius: 6px 0 0 6px;
-    padding: 12px 8px;
+    writing-mode: horizontal-tb;
+    text-align: center;
+    line-height: 1.3;
   }
-  .row-label.proposed {
-    background: #1a5fb4;
-  }
+  .row-label.today    { background: #e87820; }
+  .row-label.proposed { background: #1a5fb4; }
 
-  .today-content {
+  .row-content {
     flex: 1;
-    background: #fff8f0;
-    border: 2.5px solid #e87820;
-    border-left: none;
     border-radius: 0 6px 6px 0;
-    padding: 20px 24px;
+    padding: 14px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
   }
-  .chaos-headline {
-    font-size: 15px;
+  .today-content   { background: #fff8f0; border: 2px solid #e87820; border-left: none; }
+  .proposed-content{ background: #eef4ff; border: 2px solid #1a5fb4; border-left: none; }
+
+  /* ── Today internals ── */
+  .section-headline {
+    font-size: 13px;
     font-weight: 800;
-    color: #c0392b;
-    margin-bottom: 14px;
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-shrink: 0;
   }
-  .chaos-badge {
-    background: #c0392b;
-    color: #fff;
-    font-size: 10px;
+  .today-headline   { color: #c0392b; }
+  .proposed-headline{ color: #1a5fb4; }
+
+  .pill {
+    font-size: 9px;
     font-weight: 700;
     padding: 2px 8px;
     border-radius: 10px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    color: #fff;
   }
+  .pill-red  { background: #c0392b; }
+  .pill-blue { background: #1a5fb4; }
+
   .pain-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 10px;
+    gap: 8px;
+    flex: 1;
+    min-height: 0;
   }
-  .pain-item {
+  .pain-card {
     background: #fff;
     border: 1.5px solid #f0c0a0;
     border-left: 4px solid #e87820;
     border-radius: 4px;
-    padding: 10px 12px;
+    padding: 8px 10px;
   }
-  .pain-item.critical {
+  .pain-card.critical {
     border-left-color: #c0392b;
     border-color: #f5c6c6;
     background: #fff5f5;
   }
   .pain-label {
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    color: #888;
-    margin-bottom: 3px;
+    color: #999;
+    margin-bottom: 2px;
   }
   .pain-label.red { color: #c0392b; }
-  .pain-text {
-    font-size: 13px;
-    font-weight: 600;
-    color: #333;
-    line-height: 1.4;
-  }
-  .pain-sub {
-    font-size: 11px;
-    color: #888;
-    margin-top: 2px;
-    line-height: 1.3;
-  }
+  .pain-body  { font-size: 12px; font-weight: 700; color: #222; line-height: 1.3; }
+  .pain-sub   { font-size: 10px; color: #888; margin-top: 2px; line-height: 1.3; }
 
-  /* ── PROPOSED row ────────────────────────────────────*/
-  .proposed-content {
-    flex: 1;
-    background: #eef4ff;
-    border: 2.5px solid #1a5fb4;
-    border-left: none;
-    border-radius: 0 6px 6px 0;
-    padding: 20px 24px;
-  }
-  .ai-headline {
-    font-size: 15px;
-    font-weight: 800;
-    color: #1a5fb4;
-    margin-bottom: 14px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  .ai-badge {
-    background: #1a5fb4;
-    color: #fff;
-    font-size: 10px;
-    font-weight: 700;
-    padding: 2px 8px;
-    border-radius: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .principle-grid {
+  /* ── Proposed internals ── */
+  .pillars {
     display: grid;
     grid-template-columns: 1fr 1fr 1fr;
     gap: 10px;
-    margin-bottom: 14px;
+    flex-shrink: 0;
   }
-  .principle {
+  .pillar {
     background: #fff;
     border: 1.5px solid #b3d0f5;
     border-top: 4px solid #1a5fb4;
     border-radius: 4px;
-    padding: 12px;
-    text-align: center;
+    padding: 10px 12px;
   }
-  .principle.gold { border-top-color: #f0a500; }
-  .principle.green { border-top-color: #2d9e4f; }
-  .principle-icon {
-    font-size: 20px;
-    margin-bottom: 5px;
-  }
-  .principle-name {
-    font-size: 11px;
+  .pillar.gold  { border-top-color: #f0a500; }
+  .pillar.green { border-top-color: #2d9e4f; }
+  .pillar-name {
+    font-size: 10px;
     font-weight: 800;
     text-transform: uppercase;
     letter-spacing: 0.8px;
-    color: #1a5fb4;
     margin-bottom: 4px;
   }
-  .principle-name.gold { color: #c07a00; }
-  .principle-name.green { color: #1e7a3a; }
-  .principle-desc {
-    font-size: 11px;
-    color: #555;
-    line-height: 1.4;
-  }
-  .what-changes {
+  .pillar-name.blue  { color: #1a5fb4; }
+  .pillar-name.gold  { color: #b07800; }
+  .pillar-name.green { color: #1e7a3a; }
+  .pillar-desc { font-size: 11px; color: #444; line-height: 1.45; }
+
+  .changes-bar {
     background: #fff;
     border: 1.5px solid #b3d0f5;
     border-radius: 4px;
-    padding: 12px 16px;
+    padding: 9px 14px;
+    flex-shrink: 0;
   }
-  .what-title {
-    font-size: 10px;
+  .changes-title {
+    font-size: 9px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.8px;
     color: #1a5fb4;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
   }
-  .change-list {
-    list-style: none;
+  .changes-grid {
     display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 4px 16px;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px 16px;
   }
-  .change-list li {
-    font-size: 12px;
+  .change-item {
+    font-size: 11px;
     color: #333;
-    padding-left: 16px;
-    position: relative;
     line-height: 1.4;
   }
-  .change-list li::before {
-    content: "→";
-    position: absolute;
-    left: 0;
-    color: #1a5fb4;
-    font-weight: 700;
-  }
-
-  /* ── Step header ─────────────────────────────────── */
-  .step-header {
-    display: flex;
-    align-items: center;
-    gap: 20px;
-    margin-bottom: 20px;
-  }
-  .step-meta {
-    flex-shrink: 0;
-  }
-  .divider-arrow {
-    font-size: 28px;
-    color: #ccc;
-  }
-  .context-note {
-    font-size: 12px;
-    color: #888;
-    background: #f8f8f8;
-    border-radius: 4px;
-    padding: 8px 14px;
-    border-left: 3px solid #ccc;
-    flex: 1;
-  }
-  .context-note strong { color: #555; }
+  .change-item::before { content: "→ "; color: #1a5fb4; font-weight: 700; }
 </style>
 </head>
 <body>
 <div class="slide">
-  <h1>Journey today + proposed journey</h1>
 
-  <!-- Step header -->
-  <div class="step-header">
-    <div class="step-meta">
+  <!-- Header -->
+  <div class="header">
+    <div class="step-block">
       <div class="step-badge">Step 4</div>
-      <div class="step-number">4</div>
       <div class="step-title">MAF</div>
     </div>
+    <div class="title-main">Journey today + proposed journey</div>
     <div class="context-note">
       <strong>Where it sits:</strong> DM has sent the MAF link. Merchant must now complete the form.
       This is the highest-friction point in the entire journey — for everyone.
@@ -287,73 +222,70 @@
   </div>
 
   <!-- TODAY row -->
-  <div class="today-row">
-    <div class="row-label">TO-<br>DAY</div>
-    <div class="today-content">
-      <div class="chaos-headline">
-        <span>The reality: fragmented, merchant-hostile, internally duplicated</span>
-        <span class="chaos-badge">High friction</span>
+  <div class="row">
+    <div class="row-label today">TO-<br>DAY</div>
+    <div class="row-content today-content">
+      <div class="section-headline today-headline">
+        ⚠ Reality: fragmented, merchant-hostile, internally duplicated
+        <span class="pill pill-red">High friction</span>
       </div>
       <div class="pain-grid">
-        <div class="pain-item critical">
+        <div class="pain-card critical">
           <div class="pain-label red">Completion rate</div>
-          <div class="pain-text">85% incomplete on first send</div>
-          <div class="pain-sub">Merchant confusion drives re-work loops between DM, SE &amp; merchant</div>
+          <div class="pain-body">85% incomplete on first send</div>
+          <div class="pain-sub">Re-work loops between DM, SE &amp; merchant — everyone loses time</div>
         </div>
-        <div class="pain-item critical">
+        <div class="pain-card critical">
           <div class="pain-label red">System fragmentation</div>
-          <div class="pain-text">2 disconnected systems</div>
-          <div class="pain-sub">DM has to navigate CKO tools; merchant just sees a broken experience</div>
+          <div class="pain-body">2 disconnected systems</div>
+          <div class="pain-sub">DM navigates internal tools; merchant sees a broken, confusing experience</div>
         </div>
-        <div class="pain-item">
+        <div class="pain-card">
           <div class="pain-label">Merchant burden</div>
-          <div class="pain-text">Heavy lift entirely on merchant</div>
-          <div class="pain-sub">No pre-fill, no guidance, no context — they're handed a blank form</div>
+          <div class="pain-body">Heavy lift entirely on merchant</div>
+          <div class="pain-sub">No pre-fill, no guidance — handed a blank form with no context</div>
         </div>
-        <div class="pain-item">
+        <div class="pain-card">
           <div class="pain-label">Internal coordination</div>
-          <div class="pain-text">Siloed DM → SE handoffs</div>
-          <div class="pain-sub">No single owner; merchant chased by multiple people with conflicting info</div>
+          <div class="pain-body">Siloed DM → SE handoffs</div>
+          <div class="pain-sub">Multiple voices, conflicting info — merchant doesn't know who owns this</div>
         </div>
       </div>
     </div>
   </div>
 
   <!-- PROPOSED row -->
-  <div class="today-row">
+  <div class="row">
     <div class="row-label proposed">PRO-<br>POSED</div>
-    <div class="proposed-content">
-      <div class="ai-headline">
-        <span>AI-first MAF: one hub, merchant shielded, one team behind it</span>
-        <span class="ai-badge">AI-first</span>
+    <div class="row-content proposed-content">
+      <div class="section-headline proposed-headline">
+        ✦ AI-first MAF: one hub, merchant shielded, one team behind it
+        <span class="pill pill-blue">AI-first</span>
       </div>
-      <div class="principle-grid">
-        <div class="principle">
-          <div class="principle-icon">🤖</div>
-          <div class="principle-name">AI-First</div>
-          <div class="principle-desc">DM+AI pre-fills the MAF from Salesforce &amp; deal context. Merchant only attests — not data-entry.</div>
+      <div class="pillars">
+        <div class="pillar">
+          <div class="pillar-name blue">🤖 AI-First</div>
+          <div class="pillar-desc">DM+AI pre-fills the MAF from Salesforce &amp; deal context. Merchant only attests — no blank form, no data entry.</div>
         </div>
-        <div class="principle gold">
-          <div class="principle-icon">🛡️</div>
-          <div class="principle-name gold">Merchant Protected</div>
-          <div class="principle-desc">Merchant sees one clean hub. Our internal systems, complexity &amp; tool-switching are invisible to them.</div>
+        <div class="pillar gold">
+          <div class="pillar-name gold">🛡️ Merchant Protected</div>
+          <div class="pillar-desc">Our internal systems &amp; tool-switching are invisible to the merchant. One clean hub is all they ever see.</div>
         </div>
-        <div class="principle green">
-          <div class="principle-icon">🤝</div>
-          <div class="principle-name green">#OneTeam</div>
-          <div class="principle-desc">Single onboarding hub owned jointly by DM &amp; SE. One coordinated voice to the merchant.</div>
+        <div class="pillar green">
+          <div class="pillar-name green">🤝 #OneTeam</div>
+          <div class="pillar-desc">DM &amp; SE share one view, one timeline. One coordinated voice to the merchant — no crossed wires.</div>
         </div>
       </div>
-      <div class="what-changes">
-        <div class="what-title">What changes in practice</div>
-        <ul class="change-list">
-          <li>AI drafts MAF from SF data before DM sends</li>
-          <li>Single onboarding hub replaces 2 systems</li>
-          <li>Merchant only attests — zero blank forms</li>
-          <li>AI quality check catches gaps before submission</li>
-          <li>DM &amp; SE aligned on one view, one timeline</li>
-          <li>Sent globally at deal kickoff, not as afterthought</li>
-        </ul>
+      <div class="changes-bar">
+        <div class="changes-title">What changes in practice</div>
+        <div class="changes-grid">
+          <div class="change-item">AI drafts MAF from Salesforce before DM sends</div>
+          <div class="change-item">AI quality check catches gaps before submission</div>
+          <div class="change-item">DM &amp; SE aligned on one shared view &amp; timeline</div>
+          <div class="change-item">Single onboarding hub replaces 2 systems</div>
+          <div class="change-item">Merchant attests only — zero data entry</div>
+          <div class="change-item">Sent globally at deal kickoff, not as afterthought</div>
+        </div>
       </div>
     </div>
   </div>
