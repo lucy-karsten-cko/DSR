@@ -97,6 +97,8 @@ function onOpen() {
     .addSeparator()
     .addItem("📥 Import from Salesforce CSV", "showImportSidebar")
     .addItem("ℹ️  DSR Lifecycle Rules", "showLifecycleRules")
+    .addSeparator()
+    .addItem("📊 Create MAF Journey Slide", "createMAFJourneySlide")
     .addToUi();
 }
 
@@ -663,4 +665,177 @@ function showLifecycleRules() {
     "Cycle Days = Work Complete Date − MAF Sent Date";
 
   SpreadsheetApp.getUi().alert(msg);
+}
+
+// =============================================================================
+// MAF JOURNEY SLIDE GENERATOR
+// =============================================================================
+
+/**
+ * Creates (or replaces) a Google Slides presentation with the Step 4 MAF
+ * journey slide — TODAY chaos vs PROPOSED AI-first/#OneTeam approach.
+ *
+ * Run from: DSR Management → Create MAF Journey Slide
+ * The presentation URL is shown in an alert when done.
+ */
+function createMAFJourneySlide() {
+  var pres = SlidesApp.create("DSR Journey — Step 4 MAF");
+  var slide = pres.getSlides()[0];
+  slide.getBackground().setSolidFill("#FFFFFF");
+
+  var W = 720, H = 405; // points (standard 16:9 at 10-inch wide = 720pt)
+
+  // ── Title ──────────────────────────────────────────────────────────────────
+  var title = slide.insertTextBox("Journey today + proposed journey");
+  title.setLeft(32).setTop(18).setWidth(656).setHeight(32);
+  var ts = title.getText().getTextStyle();
+  ts.setFontSize(20).setBold(true).setForegroundColor("#1a1a2e");
+
+  // ── Step badge ─────────────────────────────────────────────────────────────
+  var badge = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, 32, 58, 100, 28);
+  badge.getFill().setSolidFill("#1a1a2e");
+  badge.getBorder().setTransparent();
+  var badgeTxt = badge.getText();
+  badgeTxt.setText("STEP  4  ·  MAF");
+  badgeTxt.getTextStyle().setFontSize(9).setBold(true).setForegroundColor("#FFFFFF");
+  badgeTxt.getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.CENTER);
+
+  // ── TODAY label ────────────────────────────────────────────────────────────
+  var todayLabel = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, 32, 98, 52, 118);
+  todayLabel.getFill().setSolidFill("#e87820");
+  todayLabel.getBorder().setTransparent();
+  var tlt = todayLabel.getText();
+  tlt.setText("TO-\nDAY");
+  tlt.getTextStyle().setFontSize(10).setBold(true).setForegroundColor("#FFFFFF");
+  tlt.getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.CENTER);
+
+  // ── TODAY content box ──────────────────────────────────────────────────────
+  var todayBox = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, 86, 98, 602, 118);
+  todayBox.getFill().setSolidFill("#fff8f0");
+  todayBox.getBorder().setWeight(2).setDashStyle(SlidesApp.DashStyle.SOLID);
+  todayBox.getBorder().getLineFill().setSolidFill("#e87820");
+
+  // TODAY headline
+  var todayHead = slide.insertTextBox("⚠  Reality: fragmented, merchant-hostile, internally duplicated");
+  todayHead.setLeft(94).setTop(103).setWidth(580).setHeight(18);
+  var ths = todayHead.getText().getTextStyle();
+  ths.setFontSize(10).setBold(true).setForegroundColor("#c0392b");
+
+  // TODAY pain points — 4 mini cards in a 2×2 grid
+  var pains = [
+    { label: "COMPLETION RATE",   body: "85% incomplete on first send",       sub: "Re-work loops between DM, SE & merchant",          x: 94,  critical: true  },
+    { label: "SYSTEM FRAGMENTATION", body: "2 disconnected systems",          sub: "DM navigates CKO tools; merchant sees broken UX",  x: 394, critical: true  },
+    { label: "MERCHANT BURDEN",   body: "Heavy lift entirely on merchant",    sub: "No pre-fill, no guidance — just a blank form",      x: 94,  critical: false },
+    { label: "INTERNAL COORD.",   body: "Siloed DM → SE handoffs",            sub: "Multiple voices; conflicting info to merchant",     x: 394, critical: false },
+  ];
+
+  pains.forEach(function(p, i) {
+    var row = i < 2 ? 0 : 1;
+    var y = 124 + row * 44;
+    var card = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, p.x, y, 288, 38);
+    card.getFill().setSolidFill(p.critical ? "#fff5f5" : "#FFFFFF");
+    card.getBorder().setWeight(1.5).getLineFill().setSolidFill(p.critical ? "#f5c6c6" : "#f0c0a0");
+
+    var lbl = slide.insertTextBox(p.label);
+    lbl.setLeft(p.x + 8).setTop(y + 4).setWidth(272).setHeight(10);
+    lbl.getText().getTextStyle().setFontSize(7).setBold(true)
+       .setForegroundColor(p.critical ? "#c0392b" : "#888888");
+
+    var bdy = slide.insertTextBox(p.body);
+    bdy.setLeft(p.x + 8).setTop(y + 14).setWidth(272).setHeight(12);
+    bdy.getText().getTextStyle().setFontSize(9.5).setBold(true).setForegroundColor("#333333");
+
+    var sub = slide.insertTextBox(p.sub);
+    sub.setLeft(p.x + 8).setTop(y + 26).setWidth(272).setHeight(10);
+    sub.getText().getTextStyle().setFontSize(7.5).setForegroundColor("#888888");
+  });
+
+  // ── PROPOSED label ─────────────────────────────────────────────────────────
+  var propLabel = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, 32, 228, 52, 148);
+  propLabel.getFill().setSolidFill("#1a5fb4");
+  propLabel.getBorder().setTransparent();
+  var plt = propLabel.getText();
+  plt.setText("PRO-\nPOSED");
+  plt.getTextStyle().setFontSize(9).setBold(true).setForegroundColor("#FFFFFF");
+  plt.getParagraphStyle().setParagraphAlignment(SlidesApp.ParagraphAlignment.CENTER);
+
+  // ── PROPOSED content box ───────────────────────────────────────────────────
+  var propBox = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, 86, 228, 602, 148);
+  propBox.getFill().setSolidFill("#eef4ff");
+  propBox.getBorder().setWeight(2).setDashStyle(SlidesApp.DashStyle.SOLID);
+  propBox.getBorder().getLineFill().setSolidFill("#1a5fb4");
+
+  // PROPOSED headline
+  var propHead = slide.insertTextBox("✦  AI-first MAF: one hub, merchant shielded, one team behind it");
+  propHead.setLeft(94).setTop(233).setWidth(580).setHeight(18);
+  var phs = propHead.getText().getTextStyle();
+  phs.setFontSize(10).setBold(true).setForegroundColor("#1a5fb4");
+
+  // Three pillars
+  var pillars = [
+    { icon: "🤖", name: "AI-FIRST",           color: "#1a5fb4", borderTop: "#1a5fb4",
+      desc: "DM+AI pre-fills from Salesforce & deal context. Merchant only attests — no blank form." },
+    { icon: "🛡️", name: "MERCHANT PROTECTED", color: "#c07a00", borderTop: "#f0a500",
+      desc: "Our systems & tool-switching are invisible to merchant. One clean hub is all they see." },
+    { icon: "🤝", name: "#ONETEAM",           color: "#1e7a3a", borderTop: "#2d9e4f",
+      desc: "DM & SE share one view, one timeline. One coordinated voice to the merchant." },
+  ];
+
+  pillars.forEach(function(p, i) {
+    var px = 94 + i * 196;
+    var card = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, px, 256, 184, 68);
+    card.getFill().setSolidFill("#FFFFFF");
+    card.getBorder().setWeight(1.5).getLineFill().setSolidFill("#b3d0f5");
+
+    // top accent line
+    var accent = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, px, 256, 184, 4);
+    accent.getFill().setSolidFill(p.borderTop);
+    accent.getBorder().setTransparent();
+
+    var icon = slide.insertTextBox(p.icon + "  " + p.name);
+    icon.setLeft(px + 6).setTop(264).setWidth(172).setHeight(12);
+    var its = icon.getText().getTextStyle();
+    its.setFontSize(8.5).setBold(true).setForegroundColor(p.color);
+
+    var desc = slide.insertTextBox(p.desc);
+    desc.setLeft(px + 6).setTop(278).setWidth(172).setHeight(40);
+    var dts = desc.getText().getTextStyle();
+    dts.setFontSize(8).setForegroundColor("#444444");
+  });
+
+  // "What changes" bar
+  var wcBar = slide.insertShape(SlidesApp.ShapeType.RECTANGLE, 94, 330, 580, 38);
+  wcBar.getFill().setSolidFill("#FFFFFF");
+  wcBar.getBorder().setWeight(1).getLineFill().setSolidFill("#b3d0f5");
+
+  var wcTitle = slide.insertTextBox("WHAT CHANGES IN PRACTICE");
+  wcTitle.setLeft(100).setTop(333).setWidth(200).setHeight(10);
+  wcTitle.getText().getTextStyle().setFontSize(7).setBold(true).setForegroundColor("#1a5fb4");
+
+  var changes = [
+    "→ AI drafts MAF from SF before DM sends",
+    "→ Single hub replaces 2 systems",
+    "→ Merchant attests only — no data entry",
+    "→ AI quality check before submission",
+    "→ DM & SE aligned on one view",
+    "→ Sent globally at deal kickoff",
+  ];
+  var col1 = changes.slice(0, 3).join("\n");
+  var col2 = changes.slice(3).join("\n");
+
+  var c1 = slide.insertTextBox(col1);
+  c1.setLeft(100).setTop(343).setWidth(280).setHeight(22);
+  c1.getText().getTextStyle().setFontSize(7.5).setForegroundColor("#333333");
+
+  var c2 = slide.insertTextBox(col2);
+  c2.setLeft(390).setTop(343).setWidth(280).setHeight(22);
+  c2.getText().getTextStyle().setFontSize(7.5).setForegroundColor("#333333");
+
+  // ── Done ───────────────────────────────────────────────────────────────────
+  var url = pres.getUrl();
+  SpreadsheetApp.getUi().alert(
+    "✅ Slide created!\n\n" +
+    "Open your presentation:\n" + url + "\n\n" +
+    "Tip: Rename & move it into your Journey deck, then delete slide 4."
+  );
 }
