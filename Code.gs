@@ -11,6 +11,19 @@
 //              Breakglass task    → Pricing Approved
 //              Other              → whatever milestone ends this work
 //
+// PRE-QUALIFICATION GATE (runs before MAF Sent):
+//   DMs must confirm all four early screens before a MAF is sent:
+//     1. MATCH/VMSS     — no positive termination hit
+//     2. Line of Business — direct merchant only (not a payment agent / MoR
+//                           acting on behalf of a separate legal entity)
+//     3. Sanctions/AML  — no direct sanctions exposure; licensed in all
+//                          operating jurisdictions
+//     4. MAC Eligibility — merchant meets minimum CB-ratio requirements
+//                          for their vertical (e.g. Digital Goods)
+//   If any check fails the DSR is declined immediately with the relevant
+//   decline reason recorded. This prevents merchants from completing the MAF
+//   and consuming internal review capacity for preventable declines.
+//
 // Expected time is calculated from the scoring model in the "Scoring Model"
 // sheet and is based on: Opportunity Type (baseline) + Complexity Add-ons
 // (Incentive Rate, Regional Attribute, Merchant Type, Model Type) + Task
@@ -33,7 +46,7 @@ var COL = {
   ADDON_NDA:          12,   // TRUE/FALSE
   ADDON_VAS:          13,   // TRUE/FALSE
   EXPECTED_HOURS:     14,   // Auto-calculated
-  STATUS:             15,   // Open | MAF Sent | MAF Submitted | MAF Approved | Closed
+  STATUS:             15,   // Open | MAF Sent | MAF Submitted | MAF Approved | Closed | Declined
   MAF_SENT_DATE:      16,   // DSR START — set when status moves to "MAF Sent"
   MAF_SUBMIT_DATE:    17,
   MAF_APPROVE_DATE:   18,
@@ -42,6 +55,7 @@ var COL = {
   CYCLE_DAYS:         21,   // WORK_COMPLETE_DATE - MAF_SENT_DATE
   EARNED_POINTS:      22,   // Points earned so far based on milestone weights
   NOTES:              23,
+  DECLINE_REASON:     24,   // Populated only for Declined DSRs
 };
 
 var DSR_LOG_SHEET   = "DSR Log";
@@ -77,7 +91,18 @@ var MILESTONE_WEIGHTS = {
 };
 
 // ─── Lifecycle status order ───────────────────────────────────────────────────
+// "Declined" is a terminal state reachable from any stage; it is NOT part of
+// the forward progression sequence and is handled separately.
 var STATUS_ORDER = ["Open", "MAF Sent", "MAF Submitted", "MAF Approved", "Closed"];
+
+// ─── Decline reasons ──────────────────────────────────────────────────────────
+var DECLINE_REASONS = {
+  "1": "Declined - MATCH/VMSS",
+  "2": "Declined - Line of Business",
+  "3": "Declined - Compliance/AML",
+  "4": "Declined - MAC (High CB Ratio)",
+  "5": "Declined - Other"
+};
 
 // =============================================================================
 // MENU
@@ -91,6 +116,7 @@ function onOpen() {
     .addItem("⏩ Advance to MAF Submitted", "advanceToMAFSubmitted")
     .addItem("✅ Advance to MAF Approved", "advanceToMAFApproved")
     .addItem("🏁 Close DSR (Work Complete)", "closeSelectedDSRs")
+    .addItem("🚫 Decline DSR", "declineSelectedDSRs")
     .addSeparator()
     .addItem("🔄 Recalculate Expected Hours", "recalculateAllExpectedHours")
     .addItem("📊 Refresh Earned Points", "refreshAllEarnedPoints")
@@ -116,7 +142,7 @@ function setupSheets() {
       "Expected Hours", "Status",
       "MAF Sent Date ★ START", "MAF Submitted Date", "MAF Approved Date",
       "Work Complete Date ★ CLOSE", "Completion Event",
-      "Cycle Days", "Earned Points", "Notes"
+      "Cycle Days", "Earned Points", "Notes", "Decline Reason"
     ];
     logSheet.appendRow(headers);
 
@@ -129,28 +155,37 @@ function setupSheets() {
     logSheet.getRange(1, COL.MAF_SENT_DATE).setBackground("#0d652d").setFontColor("white");
     logSheet.getRange(1, COL.WORK_COMPLETE_DATE).setBackground("#b31412").setFontColor("white");
     logSheet.getRange(1, COL.CLOSE_REASON).setBackground("#b31412").setFontColor("white");
-
-    // Data validation for key columns
-    _applyValidation(logSheet, COL.OPP_TYPE, Object.keys(BASELINE));
-    _applyValidation(logSheet, COL.INCENTIVE, ["Gold", "Silver", "Bronze"]);
-    _applyValidation(logSheet, COL.MERCHANT_TYPE, ["Complex", "Merchant"]);
-    _applyValidation(logSheet, COL.MODEL_TYPE, ["Acquiring", "Gateway Only"]);
-    _applyValidation(logSheet, COL.IS_CROSS_REGION, ["TRUE", "FALSE"]);
-    _applyValidation(logSheet, COL.ADDON_PAYOUT, ["TRUE", "FALSE"]);
-    _applyValidation(logSheet, COL.ADDON_BREAKGLASS, ["TRUE", "FALSE"]);
-    _applyValidation(logSheet, COL.ADDON_NDA, ["TRUE", "FALSE"]);
-    _applyValidation(logSheet, COL.ADDON_VAS, ["TRUE", "FALSE"]);
-    _applyValidation(logSheet, COL.STATUS, STATUS_ORDER);
-    _applyValidation(logSheet, COL.CLOSE_REASON, [
-      "NDA Signed",
-      "Payout Configured",
-      "Pricing Approved",
-      "MAF Approved",
-      "Contract Signed",
-      "MID Issued",
-      "Other"
-    ]);
+    logSheet.getRange(1, COL.DECLINE_REASON).setBackground("#7b1fa2").setFontColor("white");
+  } else {
+    // Upgrade existing sheet: add Decline Reason column if not already present
+    if (!logSheet.getRange(1, COL.DECLINE_REASON).getValue()) {
+      logSheet.getRange(1, COL.DECLINE_REASON)
+        .setValue("Decline Reason")
+        .setBackground("#7b1fa2").setFontColor("white").setFontWeight("bold");
+    }
   }
+
+  // Apply/refresh data validation (idempotent — safe to re-run on existing sheets)
+  _applyValidation(logSheet, COL.OPP_TYPE, Object.keys(BASELINE));
+  _applyValidation(logSheet, COL.INCENTIVE, ["Gold", "Silver", "Bronze"]);
+  _applyValidation(logSheet, COL.MERCHANT_TYPE, ["Complex", "Merchant"]);
+  _applyValidation(logSheet, COL.MODEL_TYPE, ["Acquiring", "Gateway Only"]);
+  _applyValidation(logSheet, COL.IS_CROSS_REGION, ["TRUE", "FALSE"]);
+  _applyValidation(logSheet, COL.ADDON_PAYOUT, ["TRUE", "FALSE"]);
+  _applyValidation(logSheet, COL.ADDON_BREAKGLASS, ["TRUE", "FALSE"]);
+  _applyValidation(logSheet, COL.ADDON_NDA, ["TRUE", "FALSE"]);
+  _applyValidation(logSheet, COL.ADDON_VAS, ["TRUE", "FALSE"]);
+  _applyValidation(logSheet, COL.STATUS, STATUS_ORDER.concat(["Declined"]));
+  _applyValidation(logSheet, COL.CLOSE_REASON, [
+    "NDA Signed",
+    "Payout Configured",
+    "Pricing Approved",
+    "MAF Approved",
+    "Contract Signed",
+    "MID Issued",
+    "Other"
+  ]);
+  _applyValidation(logSheet, COL.DECLINE_REASON, Object.values(DECLINE_REASONS));
 
   // ── Scoring Model sheet ───────────────────────────────────────────────────
   _buildScoringModelSheet(ss);
@@ -282,11 +317,98 @@ function _advanceStatus(targetStatus, dateCol, closeReason) {
 }
 
 /**
- * START: sets status to "MAF Sent" and records the start date.
- * This is the official DSR start — DM is engaged and MAF link has been sent.
+ * START: runs the pre-qualification gate, then sets status to "MAF Sent".
+ * The gate forces DMs to verify four early screens before the MAF is sent,
+ * catching preventable declines before internal review capacity is consumed.
  */
 function startSelectedDSRs() {
+  var ui = SpreadsheetApp.getUi();
+
+  var gateResponse = ui.alert(
+    "⚠️  PRE-QUALIFICATION GATE — Required before MAF is sent",
+    "Confirm each of the following early screens has been completed and is clear:\n\n" +
+    "  1.  MATCH / VMSS\n" +
+    "      No positive termination hit on any principal or the merchant.\n\n" +
+    "  2.  Line of Business\n" +
+    "      Merchant is a direct merchant — NOT operating as a payment agent\n" +
+    "      or Merchant of Record on behalf of a separate legal entity.\n\n" +
+    "  3.  Sanctions / AML\n" +
+    "      No direct sanctions exposure (e.g. Nobitex or equivalent).\n" +
+    "      No significant screening-detection latency.\n" +
+    "      Licensed in all jurisdictions where operating (EU, Saudi Arabia, etc.).\n\n" +
+    "  4.  MAC Eligibility\n" +
+    "      Merchant meets minimum chargeback-ratio requirements for their\n" +
+    "      vertical (e.g. Digital Goods MAC thresholds).\n\n" +
+    "Have ALL FOUR checks passed? (Yes = proceed to MAF Sent | No = decline now)",
+    ui.ButtonSet.YES_NO
+  );
+
+  if (gateResponse === ui.Button.NO) {
+    _promptAndDecline();
+    return;
+  }
+
   _advanceStatus("MAF Sent", COL.MAF_SENT_DATE);
+}
+
+/**
+ * Prompts the DM to select a decline reason, then declines the selected DSRs.
+ * Called from the pre-qual gate (NO path) and from the 🚫 Decline DSR menu action.
+ */
+function declineSelectedDSRs() {
+  _promptAndDecline();
+}
+
+function _promptAndDecline() {
+  var ui = SpreadsheetApp.getUi();
+  var reasonList = Object.keys(DECLINE_REASONS).map(function(k) {
+    return "  " + k + "  " + DECLINE_REASONS[k];
+  }).join("\n");
+
+  var response = ui.prompt(
+    "🚫 Decline DSR — Select Reason",
+    "Why is this DSR being declined?\n\n" + reasonList + "\n\nEnter the number:",
+    ui.ButtonSet.OK_CANCEL
+  );
+
+  if (response.getSelectedButton() !== ui.Button.OK) return;
+
+  var input = (response.getResponseText() || "").trim();
+  var declineReason = DECLINE_REASONS[input] || DECLINE_REASONS["5"];
+
+  _applyDecline(declineReason);
+}
+
+function _applyDecline(declineReason) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName(DSR_LOG_SHEET);
+  if (!sheet) { SpreadsheetApp.getUi().alert("Run Setup Sheets first."); return; }
+
+  var rows = _getSelectedRows(sheet);
+  if (rows.length === 0) { SpreadsheetApp.getUi().alert("Select one or more DSR rows first."); return; }
+
+  var updated = 0;
+
+  rows.forEach(function(row) {
+    var currentStatus = sheet.getRange(row, COL.STATUS).getValue();
+    if (currentStatus === "Closed" || currentStatus === "Declined") return; // already terminal
+
+    // Freeze earned points at the current stage BEFORE marking as Declined
+    _updateEarnedPoints(sheet, row);
+
+    sheet.getRange(row, COL.STATUS).setValue("Declined");
+    sheet.getRange(row, COL.DECLINE_REASON).setValue(declineReason);
+
+    // Re-run to ensure the Declined branch logic is applied
+    _updateEarnedPoints(sheet, row);
+    updated++;
+  });
+
+  SpreadsheetApp.getUi().alert(
+    updated + " DSR(s) declined.\n" +
+    "Reason: " + declineReason + "\n" +
+    (updated < rows.length ? (rows.length - updated) + " DSR(s) skipped (already closed or declined)." : "")
+  );
 }
 
 function advanceToMAFSubmitted() {
@@ -395,19 +517,30 @@ function recalculateAllExpectedHours() {
 /**
  * Recalculates earned points for a single row based on milestones reached.
  * Points are proportionally allocated: MAF Sent 20%, Submit 10%, Approve 40%, Close 30%.
+ * For Declined DSRs, points are awarded for milestones already reached (date columns
+ * populated) but the final close milestone is never awarded.
  */
 function _updateEarnedPoints(sheet, row) {
-  var expected   = sheet.getRange(row, COL.EXPECTED_HOURS).getValue();
-  var status     = sheet.getRange(row, COL.STATUS).getValue();
+  var expected = sheet.getRange(row, COL.EXPECTED_HOURS).getValue();
+  var status   = sheet.getRange(row, COL.STATUS).getValue();
 
   if (!expected || !status) return;
 
   var weight = 0;
-  var idx = STATUS_ORDER.indexOf(status);
-  if (idx >= 1) weight += MILESTONE_WEIGHTS.mafSent;      // MAF Sent
-  if (idx >= 2) weight += MILESTONE_WEIGHTS.mafSubmit;    // MAF Submitted
-  if (idx >= 3) weight += MILESTONE_WEIGHTS.mafApprove;   // MAF Approved
-  if (idx >= 4) weight += MILESTONE_WEIGHTS.midIssue;     // Closed (work complete)
+
+  if (status === "Declined") {
+    // Derive stage from which milestone dates are populated rather than STATUS string
+    if (sheet.getRange(row, COL.MAF_SENT_DATE).getValue()    instanceof Date) weight += MILESTONE_WEIGHTS.mafSent;
+    if (sheet.getRange(row, COL.MAF_SUBMIT_DATE).getValue()  instanceof Date) weight += MILESTONE_WEIGHTS.mafSubmit;
+    if (sheet.getRange(row, COL.MAF_APPROVE_DATE).getValue() instanceof Date) weight += MILESTONE_WEIGHTS.mafApprove;
+    // No close milestone — declined deals never reach Work Complete
+  } else {
+    var idx = STATUS_ORDER.indexOf(status);
+    if (idx >= 1) weight += MILESTONE_WEIGHTS.mafSent;
+    if (idx >= 2) weight += MILESTONE_WEIGHTS.mafSubmit;
+    if (idx >= 3) weight += MILESTONE_WEIGHTS.mafApprove;
+    if (idx >= 4) weight += MILESTONE_WEIGHTS.midIssue;
+  }
 
   var earned = Math.round(expected * weight * 10) / 10;
   sheet.getRange(row, COL.EARNED_POINTS).setValue(earned);
@@ -620,6 +753,7 @@ function _normBool(v) {
 
 function _normStatus(stage) {
   stage = (stage || "").toLowerCase();
+  if (stage.indexOf("declin") >= 0)   return "Declined";
   if (stage.indexOf("closed") >= 0 || stage.indexOf("mid") >= 0 || stage.indexOf("live") >= 0) return "Closed";
   if (stage.indexOf("approv") >= 0)   return "MAF Approved";
   if (stage.indexOf("submit") >= 0)   return "MAF Submitted";
@@ -640,12 +774,21 @@ function showLifecycleRules() {
   var msg =
     "📋 DSR LIFECYCLE MANDATE\n" +
     "══════════════════════════════════\n\n" +
+    "⚠️  PRE-QUALIFICATION GATE  (before MAF Sent)\n" +
+    "  Triggered automatically when you click ▶ Start DSR.\n" +
+    "  All four screens must pass before a MAF is sent:\n" +
+    "    1. MATCH / VMSS — no positive termination hit\n" +
+    "    2. Line of Business — direct merchant only\n" +
+    "       (not a payment agent / MoR for a separate entity)\n" +
+    "    3. Sanctions / AML — no sanctions exposure, licensed in\n" +
+    "       all operating jurisdictions\n" +
+    "    4. MAC Eligibility — meets CB-ratio thresholds for vertical\n" +
+    "  If any check fails → use 🚫 Decline DSR instead.\n\n" +
     "▶ START  —  MAF Sent\n" +
-    "  The DM sends the MAF link to the merchant.\n" +
-    "  This is the official moment DM engagement begins.\n" +
-    "  Cycle time starts here.\n\n" +
+    "  DM sends the MAF link to the merchant.\n" +
+    "  Cycle time starts here.  Earns 20% of expected points.\n\n" +
     "⏩ MILESTONE  —  MAF Submitted\n" +
-    "  The merchant completes and submits the MAF.\n" +
+    "  Merchant completes and submits the MAF.\n" +
     "  Earns 30% of expected points (MAF Sent 20% + Submit 10%).\n\n" +
     "⏩ MILESTONE  —  MAF Approved\n" +
     "  Underwriting / Risk approves the MAF.\n" +
@@ -659,8 +802,19 @@ function showLifecycleRules() {
     "    Breakglass     → Pricing Approved\n" +
     "    Other          → whatever ends this work\n" +
     "  Earns 100% of expected points.\n\n" +
+    "🚫 DECLINE  —  Terminal (from any stage)\n" +
+    "  Use when a DSR cannot proceed.\n" +
+    "  Decline reasons:\n" +
+    "    • MATCH / VMSS\n" +
+    "    • Line of Business\n" +
+    "    • Compliance / AML\n" +
+    "    • MAC (High CB Ratio)\n" +
+    "    • Other\n" +
+    "  Earns points for milestones already completed.\n" +
+    "  Decline Reason is recorded in the purple column.\n\n" +
     "══════════════════════════════════\n" +
-    "Cycle Days = Work Complete Date − MAF Sent Date";
+    "Cycle Days = Work Complete Date − MAF Sent Date\n" +
+    "(Only calculated for successfully closed DSRs)";
 
   SpreadsheetApp.getUi().alert(msg);
 }
